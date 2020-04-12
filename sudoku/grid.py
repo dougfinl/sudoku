@@ -10,10 +10,16 @@ class Cell:
 
         self.value = value
 
+    def empty(self):
+        return self.value == 0
+
     def __eq__(self, o):
         if isinstance(o, Cell):
             return self.value == o.value
         return False
+
+    def __hash__(self):
+        return self.value
 
     def __str__(self):
         return " " if self.value == 0 else str(self.value)
@@ -134,7 +140,22 @@ class Grid:
 
         :returns: True if the board is valid, otherwise False
         """
-        raise NotImplementedError
+        cell_groups = self.rows() + self.cols() + self.boxes()
+
+        # Drop empty cells
+        cell_groups = [[c for c in cells if not c.empty()] for cells in cell_groups]
+        # Convert each cell group to a set (removes duplicates)
+        cell_sets = [set(x) for x in cell_groups]
+
+        result = True
+        for cell_group, cell_set in zip(cell_groups, cell_sets):
+            # If there were any duplicate cells in a cell group, then the set representation of that group will contain
+            # fewer values
+            if len(cell_group) != len(cell_set):
+                result = False
+                break
+
+        return result
 
     def __str__(self):
         s = ""
