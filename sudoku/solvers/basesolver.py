@@ -26,6 +26,7 @@ class BaseSolver(ABC):
         """
         Runs a single iteration of the solving algorithm.
 
-        :returns: False if there are no more steps available to take, otherwise True
+        :returns: False if there are no more steps available to take, otherwise
+                  True
         """
         self.steps += 1

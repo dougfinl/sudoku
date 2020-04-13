@@ -39,7 +39,7 @@ class Grid:
         cells = [Cell(int(c)) for c in cells]
 
         # Convert to a 2-dimensional list
-        self.cells = [cells[i : i + 9] for i in range(0, 81, 9)]
+        self.cells = [cells[i: i + 9] for i in range(0, 81, 9)]
 
     @classmethod
     def emptygrid(cls):
@@ -79,9 +79,11 @@ class Grid:
         """
         Returns cells in the box at index i.
 
-        :param i: the box index, counting across from the top-left to bottom-right
+        :param i: the box index, counting across from the top-left to
+                  bottom-right
 
-        :returns: a list of 9 cells, ordered across from top-left to bottom-right
+        :returns: a list of 9 cells, ordered across from top-left to
+                  bottom-right
         """
         if i not in range(9):
             raise ValueError("i must be between 0 and 8 inclusive")
@@ -120,7 +122,8 @@ class Grid:
 
     def boxes(self) -> [[Cell]]:
         """
-        Returns a list of 3x3 boxes in the grid, ordered from left-to-right then top-to-bottom
+        Returns a list of 3x3 boxes in the grid, ordered from left-to-right
+        then top-to-bottom
 
         :returns: a list of 9 boxes, where each box is a list of 9 cells
         """
@@ -133,10 +136,12 @@ class Grid:
     @property
     def valid(self) -> bool:
         """
-        Valdiates cell values in the board. Empty cells are ignored, thus the board is valid if empty.
+        Valdiates cell values in the board. Empty cells are ignored, thus the
+        board is valid if empty.
 
         The board is valid if all of the following conditions are true:
-            * each column contains the numbers 1-9 or blank cells, with no repeated values
+            * each column contains the numbers 1-9 or blank cells, with no
+              repeated values
             * each row follows the same rule
             * each 3x3 box follows the same rule
 
@@ -145,14 +150,16 @@ class Grid:
         cell_groups = self.rows() + self.cols() + self.boxes()
 
         # Drop empty cells
-        cell_groups = [[c for c in cells if not c.empty] for cells in cell_groups]
+        cell_groups = [
+            [c for c in cells if not c.empty] for cells in cell_groups
+        ]
         # Convert each cell group to a set (removes duplicates)
         cell_sets = [set(x) for x in cell_groups]
 
         result = True
         for cell_group, cell_set in zip(cell_groups, cell_sets):
-            # If there were any duplicate cells in a cell group, then the set representation of that group will contain
-            # fewer values
+            # If there were any duplicate cells in a cell group, then the set
+            # representation of that group will contain fewer values
             if len(cell_group) != len(cell_set):
                 result = False
                 break
