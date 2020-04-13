@@ -10,6 +10,7 @@ class Cell:
 
         self.value = value
 
+    @property
     def empty(self):
         return self.value == 0
 
@@ -129,7 +130,8 @@ class Grid:
 
         return boxes
 
-    def is_valid(self) -> bool:
+    @property
+    def valid(self) -> bool:
         """
         Valdiates cell values in the board. Empty cells are ignored, thus the board is valid if empty.
 
@@ -143,7 +145,7 @@ class Grid:
         cell_groups = self.rows() + self.cols() + self.boxes()
 
         # Drop empty cells
-        cell_groups = [[c for c in cells if not c.empty()] for cells in cell_groups]
+        cell_groups = [[c for c in cells if not c.empty] for cells in cell_groups]
         # Convert each cell group to a set (removes duplicates)
         cell_sets = [set(x) for x in cell_groups]
 
@@ -156,6 +158,52 @@ class Grid:
                 break
 
         return result
+
+    @property
+    def solved(self) -> bool:
+        """
+        Ensures all cells are populated, before checking if the grid is valid.
+
+        :returns: True if the grid is solved, otherwise False
+        """
+        for row in self.cells:
+            for cell in row:
+                if cell.empty:
+                    return False
+        return self.valid
+
+    def cell(self, x: int, y: int) -> Cell:
+        """
+        Returns the cell in the specified position.
+
+        :param x: the x coordinate, between 0 and 8 inclusive
+        :param y: the y coordinate, between 0 and 8 inclusive
+
+        :returns: the Cell at (x, y)
+        """
+        return self.cells[y][x]
+
+    def possible_values_for_cell(self, x: int, y: int) -> set:
+        """
+        Returns a set of the possible values for a specific cell.
+
+        :param x: the cell's x coordinate, between 0 and 8 inclusive
+        :param y: the cell's y coordinate, between 0 and 8 inclusive
+
+        :returns: a set of possible values for the cell at (x, y)
+        """
+        row_values = set([cell.value for cell in self.row(y)])
+        col_values = set([cell.value for cell in self.col(x)])
+        box_index = 3 * (y // 3) + x // 3
+        box_values = set([cell.value for cell in self.box(box_index)])
+
+        values = set(range(1, 10)) - row_values - col_values - box_values
+        return values
+
+    def __eq__(self, o):
+        if isinstance(o, Grid):
+            return self.cells == o.cells
+        return False
 
     def __str__(self):
         s = ""
