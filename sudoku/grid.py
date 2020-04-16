@@ -2,17 +2,44 @@
 
 
 class Cell:
-    value = 0
-
-    def __init__(self, value=0):
+    def __init__(self, value=0, locked=False):
+        """
+        Creates a cell with a specific value.
+        :param value: must be between 0 and 9 inclusive
+        :param locked: set to True if the cell value should be read-only, unless the value is 0 (empty), in which case
+                       the cell cannot be locked and this value will be ignored
+        """
         if value not in range(10):
             raise ValueError("cell value must be between 0 and 9 inclusive")
 
-        self.value = value
+        self._value = value
+        if value == 0:
+            self._locked = False
+        else:
+            self._locked = locked
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, value):
+        if not self._locked and value in range(10):
+            self._value = value
 
     @property
     def empty(self):
         return self.value == 0
+
+    @property
+    def locked(self):
+        return self._locked
+
+    def lock(self):
+        self._locked = True
+
+    def unlock(self):
+        self._locked = False
 
     def __eq__(self, o):
         if isinstance(o, Cell):
@@ -30,19 +57,17 @@ class Cell:
 
 
 class Grid:
-    cells = []
-
-    def __init__(self, cells):
-        if len(cells) != 81:
+    def __init__(self, cell_values):
+        if len(cell_values) != 81:
             raise ValueError("length of values must be 81")
 
-        cells = [Cell(int(c)) for c in cells]
+        cells = [Cell(int(c), locked=True) for c in cell_values]
 
         # Convert to a 2-dimensional list
         self.cells = [cells[i: i + 9] for i in range(0, 81, 9)]
 
     @classmethod
-    def emptygrid(cls):
+    def empty_grid(cls):
         return cls("0" * 81)
 
     def row(self, i) -> []:
@@ -133,10 +158,13 @@ class Grid:
 
         return boxes
 
+    def flattened(self):
+        return [cell for row in self.cells for cell in row]
+
     @property
     def valid(self) -> bool:
         """
-        Valdiates cell values in the board. Empty cells are ignored, thus the
+        Validates cell values in the board. Empty cells are ignored, thus the
         board is valid if empty.
 
         The board is valid if all of the following conditions are true:
@@ -178,17 +206,6 @@ class Grid:
                 if cell.empty:
                     return False
         return self.valid
-
-    def cell(self, x: int, y: int) -> Cell:
-        """
-        Returns the cell in the specified position.
-
-        :param x: the x coordinate, between 0 and 8 inclusive
-        :param y: the y coordinate, between 0 and 8 inclusive
-
-        :returns: the Cell at (x, y)
-        """
-        return self.cells[y][x]
 
     def possible_values_for_cell(self, x: int, y: int) -> set:
         """
