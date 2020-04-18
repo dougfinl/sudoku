@@ -1,8 +1,9 @@
 import itertools
 
-from grid import Cell, Grid
+from grid import Grid
 from abc import ABC, abstractmethod
-import threading, time
+import threading
+import time
 
 
 class SolverDelegate:
