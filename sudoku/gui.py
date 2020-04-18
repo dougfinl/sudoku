@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from PyQt5.QtCore import pyqtSlot, Qt, QSize
+from PyQt5.QtCore import pyqtSlot, Qt, QSize, QPropertyAnimation
 from PyQt5.QtWidgets import *
 from grid import Cell, Grid
 from solvers import SolverDelegate, NaiveSolver
@@ -8,19 +8,36 @@ from copy import deepcopy
 
 
 class CellWidget(QLabel):
+    locked_cell_style = """
+        QLabel {
+            color: #000000;
+            background-color: #e0e0e0;
+            font-size: 14pt;
+            border: 1px solid #a0a0a0;
+        }
+    """
+
+    unlocked_cell_style = """
+        QLabel {
+            color: blue;
+            background-color: #f8f8f8;
+            font-size: 14pt;
+            border: 1px solid #a0a0a0;
+        }
+    """
+
     def __init__(self):
         super().__init__()
 
         self.setAlignment(Qt.AlignCenter)
-        self.setFrameShape(QFrame.Panel)
-        self.setFrameShadow(QFrame.Sunken)
-        self.setLineWidth(2)
+        self.setStyleSheet(self.locked_cell_style)
 
         self._cell = Cell()
         self.update_ui()
 
     def update_ui(self):
         self.setText("" if self.cell.empty else str(self.cell.value))
+        self.setStyleSheet(self.locked_cell_style if self.cell.locked else self.unlocked_cell_style)
 
     def minimumSizeHint(self):
         return QSize(50, 50)
@@ -180,7 +197,8 @@ class SudokuSolverWindow(QMainWindow, SolverDelegate):
 
     @pyqtSlot()
     def step_interval_changed(self):
-        self._solver.step_interval = self._spin_box_step_interval.value()
+        if self._solver is not None:
+            self._solver.step_interval = self._spin_box_step_interval.value()
 
     @pyqtSlot()
     def start_solver(self):
