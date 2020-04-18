@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 
-from PyQt5.QtCore import pyqtSlot, Qt
+from PyQt5.QtCore import pyqtSlot, Qt, QSize
 from PyQt5.QtWidgets import *
 from grid import Cell, Grid
+from solvers import SolverDelegate, NaiveSolver
+from copy import deepcopy
 
 
 class CellWidget(QLabel):
@@ -19,6 +21,9 @@ class CellWidget(QLabel):
 
     def update_ui(self):
         self.setText("" if self.cell.empty else str(self.cell.value))
+
+    def minimumSizeHint(self):
+        return QSize(50, 50)
 
     @property
     def cell(self):
@@ -50,7 +55,6 @@ class GridWidget(QWidget):
             row = []
             for j in range(9):
                 b = CellWidget()
-                b.setFixedSize(50, 50)
                 row.append(b)
 
                 grid_layout.addWidget(b, i, j)
@@ -71,24 +75,27 @@ class GridWidget(QWidget):
         self.update_ui()
 
 
-class SudokuSolverWindow(QMainWindow):
+class SudokuSolverWindow(QMainWindow, SolverDelegate):
     grid = Grid.empty_grid()
+    original_grid = Grid.empty_grid()
 
     def __init__(self):
         super().__init__()
 
-        # TODO replace with actual solver
-        self._solver_running = False
+        self._solver = None
 
         self._grid_widget = None
         self._combo_box_algorithm = None
         self._spin_box_step_interval = None
-        self._btn_start_stop_solver = None
-        self._btn_step_solver = None
+        self._btn_start_solver = None
+        self._btn_stop_solver = None
+        # self._btn_step_solver = None
         self._btn_reset_solver = None
+        self._btn_load_grid = None
         self.init_ui()
 
     def init_ui(self):
+        self.setWindowTitle("Sudoku Solver")
         self.statusBar().showMessage("Load a grid to get started")
 
         main_layout = QHBoxLayout()
@@ -113,19 +120,27 @@ class SudokuSolverWindow(QMainWindow):
         self._spin_box_step_interval = QSpinBox()
         self._spin_box_step_interval.setEnabled(False)
         self._spin_box_step_interval.setMaximum(1000)
+        self._spin_box_step_interval.setValue(100)
+        self._spin_box_step_interval.valueChanged.connect(self.step_interval_changed)
         options_layout.addRow("Step Interval (ms)", self._spin_box_step_interval)
 
-        self._btn_start_stop_solver = QPushButton("Solve!")
-        self._btn_start_stop_solver.setEnabled(False)
-        self._btn_start_stop_solver.clicked.connect(self.start_stop_solver)
-        options_layout.addRow(self._btn_start_stop_solver)
+        self._btn_start_solver = QPushButton("Start")
+        self._btn_start_solver.setEnabled(False)
+        self._btn_start_solver.clicked.connect(self.start_solver)
+        options_layout.addRow(self._btn_start_solver)
 
-        self._btn_step_solver = QPushButton("Step")
-        self._btn_step_solver.setEnabled(False)
-        options_layout.addRow(self._btn_step_solver)
+        self._btn_stop_solver = QPushButton("Stop")
+        self._btn_stop_solver.setEnabled(False)
+        self._btn_stop_solver.clicked.connect(self.stop_solver)
+        options_layout.addRow(self._btn_stop_solver)
+
+        # self._btn_step_solver = QPushButton("Step")
+        # self._btn_step_solver.setEnabled(False)
+        # options_layout.addRow(self._btn_step_solver)
 
         self._btn_reset_solver = QPushButton("Reset")
         self._btn_reset_solver.setEnabled(False)
+        self._btn_reset_solver.clicked.connect(self.reset_solver)
         options_layout.addRow(self._btn_reset_solver)
 
         divider = QFrame()
@@ -133,42 +148,81 @@ class SudokuSolverWindow(QMainWindow):
         divider.setFrameShadow(QFrame.Sunken)
         options_layout.addRow(divider)
 
-        load_grid_button = QPushButton("Load Grid...")
-        load_grid_button.clicked.connect(self.load_grid_dialog)
-        options_layout.addRow(load_grid_button)
+        self._btn_load_grid = QPushButton("Load Grid...")
+        self._btn_load_grid.clicked.connect(self.load_grid_dialog)
+        options_layout.addRow(self._btn_load_grid)
 
-    def grid_loaded(self):
+    def load_grid(self, grid: Grid):
+        self.original_grid = deepcopy(grid)
+        self.grid = grid
+        self._grid_widget.grid = grid
+        self._grid_widget.update_ui()
+
         self._combo_box_algorithm.setEnabled(True)
         self._spin_box_step_interval.setEnabled(True)
-        self._btn_start_stop_solver.setEnabled(True)
-        self._btn_step_solver.setEnabled(True)
+        self._btn_start_solver.setEnabled(True)
+        # self._btn_step_solver.setEnabled(True)
         self._btn_reset_solver.setEnabled(True)
 
         self.statusBar().showMessage("Grid loaded")
-        self._grid_widget.grid = self.grid
+
+    def on_solver_step(self):
+        self.statusBar().showMessage("Running step {}".format(self._solver.steps + 1))
+
+    def on_solver_step_complete(self):
+        self._grid_widget.update_ui()
 
     @pyqtSlot()
     def load_grid_dialog(self):
         grid_str, ok = QInputDialog.getText(self, "Load Sudoku Grid", "81-char string:", QLineEdit.Normal, "")
         if ok and len(grid_str) == 81:
-            self.grid = Grid(grid_str)
-            self.grid_loaded()
+            self.load_grid(Grid(grid_str))
 
     @pyqtSlot()
-    def start_stop_solver(self):
-        # TODO start solver running
-        if self._solver_running:
-            # TODO stop the solver
-            self._solver_running = False
-            self._btn_start_stop_solver.setText("Solve!")
-        else:
-            # TODO start the solver
-            self._solver_running = True
-            self._btn_start_stop_solver.setText("Stop")
+    def step_interval_changed(self):
+        self._solver.step_interval = self._spin_box_step_interval.value()
+
+    @pyqtSlot()
+    def start_solver(self):
+        self._combo_box_algorithm.setEnabled(False)
+        self._btn_start_solver.setEnabled(False)
+        self._btn_load_grid.setEnabled(False)
+        self._btn_stop_solver.setEnabled(True)
+        self._solver = NaiveSolver(self.grid)
+        self._solver.delegate = self
+        self._solver.step_interval = self._spin_box_step_interval.value()
+        self._solver.start()
+
+    @pyqtSlot()
+    def stop_solver(self):
+        if self._solver is None:
+            return
+
+        self.statusBar().showMessage("Stopping...")
+        self._btn_stop_solver.setEnabled(False)
+        # Repaint the window immediately, before self._solver.stop() blocks
+        self.repaint()
+
+        self._solver.stop()
+
+        self.statusBar().showMessage("")
+        self._btn_start_solver.setEnabled(True)
+        self._combo_box_algorithm.setEnabled(True)
+        self._btn_load_grid.setEnabled(True)
+
+    @pyqtSlot()
+    def reset_solver(self):
+        self.stop_solver()
+        self.load_grid(self.original_grid)
+
+    def closeEvent(self, event):
+        self.stop_solver()
+        event.accept()
 
 
 def main():
     import sys
+
     app = QApplication(sys.argv)
     w = SudokuSolverWindow()
     w.show()
