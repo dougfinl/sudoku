@@ -1,114 +1,127 @@
+# -*- coding: utf-8 -*-
+
 import itertools
+from abc import ABC, abstractmethod
+from copy import deepcopy
 
 from grid import Grid
-from abc import ABC, abstractmethod
-import threading
-import time
 
 
 class SolverDelegate:
-    def on_solver_step(self):
+    def on_solver_step_complete(self, grid: Grid):
+        """
+        Called each time a step in the solver is completed.
+
+        :param grid: a copy of the grid from the current step
+        """
         pass
 
-    def on_solver_step_complete(self):
+    def on_solver_solved(self):
+        """
+        Called if the solver finds a solution to the puzzle.
+        """
+        pass
+
+    def on_solver_failed(self):
+        """
+        Called if the solver was unable to find a solution for the puzzle.
+        """
         pass
 
 
 class BaseSolver(ABC):
     grid: Grid = None
-    step_interval: int = 0
-    steps: int = 0
+    step_history = []
 
     delegate: SolverDelegate = None
 
-    def __init__(self, grid: Grid):
+    def __init__(self, grid: Grid, delegate=None):
         self.grid = grid
+        self.delegate = delegate
 
-        self._solver_thread = threading.Thread(target=self._solve_loop)
-        self._should_stop = False
-
-    def start(self):
-        if self.running:
-            return
-
-        self.steps = 0
-        self.init_solver()
-        self._should_stop = False
-        self._solver_thread.start()
-
-    def _solve_loop(self):
-        while not self._should_stop:
-            self._run_step()
-            time.sleep(self.step_interval / 1000)
-
-    @abstractmethod
-    def init_solver(self):
-        pass
-
-    def stop(self):
-        if self._solver_thread.is_alive():
-            self._should_stop = True
-            self._solver_thread.join()
-
-    def _run_step(self) -> bool:
-        if self.delegate is not None:
-            self.delegate.on_solver_step()
-
-        self.steps += 1
-        success = self.step()
+    def _step_complete(self):
+        self.step_history.append(deepcopy(self.grid))
 
         if self.delegate is not None:
-            self.delegate.on_solver_step_complete()
+            grid_copy = deepcopy(self.grid)
+            self.delegate.on_solver_step_complete(grid_copy)
 
-        return success
+    def _solved(self):
+        if self.delegate is not None:
+            self.delegate.on_solver_solved()
 
-    @abstractmethod
-    def step(self) -> bool:
-        """
-        Runs a single iteration of the solving algorithm.
-
-        :returns: True if the step completed successfully, otherwise False (usually because there are no more steps to
-                  run)
-        """
-        pass
+    def _failed(self):
+        if self.delegate is not None:
+            self.delegate.on_solver_failed()
 
     @property
-    def running(self):
-        return self._solver_thread.is_alive()
+    def num_steps(self):
+        return len(self.step_history)
+
+    @abstractmethod
+    def solve(self) -> bool:
+        """
+        Attempts to find a solution for the Sudoku grid.
+
+        :returns: True if a solution has been found, otherwise False.
+        """
+        pass
 
 
 class NaiveSolver(BaseSolver):
-    def __init__(self, grid: Grid):
-        super().__init__(grid)
-        self._possible_values_combinations = None
-        self._empty_cell_coords = None
+    def solve(self):
+        success = False
 
-    def init_solver(self):
-        self._empty_cell_coords = []
-        all_possible_values = []
+        # Initialisation
+        empty_cell_coords = []
+        all_possible_cell_values = []
+        for y in range(9):
+            for x in range(9):
+                if self.grid.cells[y][x].empty:
+                    empty_cell_coords.append((x, y))
+                    possible_values = self.grid.possible_values_for_cell(x, y)
+                    all_possible_cell_values.append(possible_values)
 
-        for i in range(9):
-            for j in range(9):
-                if self.grid.cells[i][j].empty:
-                    self._empty_cell_coords.append((i, j))
-                    possible_values = self.grid.possible_values_for_cell(i, j)
-                    all_possible_values.append(possible_values)
+        # Solving
+        for values_to_try in itertools.product(*all_possible_cell_values):
+            for i, (x, y) in enumerate(empty_cell_coords):
+                self.grid.cells[y][x].value = values_to_try[i]
 
-        self._possible_values_combinations = itertools.product(*all_possible_values)
+            if self.grid.valid:
+                success = True
+                break
 
-    def step(self) -> bool:
-        success = True
-        try:
-            values_to_try = next(self._possible_values_combinations)
+            self._step_complete()
 
-            # Plug the values back in to the empty cells
-            value_index = 0
-            for coord in self._empty_cell_coords:
-                x = coord[0]
-                y = coord[1]
-                self.grid.cells[x][y].value = values_to_try[value_index]
-                value_index += 1
-        except StopIteration:
-            success = False
+        if success:
+            self._solved()
+        else:
+            self._failed()
 
         return success
+
+
+def main():
+    g = Grid("862341950"
+             "573000800"
+             "900007023"
+             "009510460"
+             "080602070"
+             "025034100"
+             "240173589"
+             "008000716"
+             "050986234")
+
+    print(g)
+    print("Valid? {}".format(g.valid))
+    print("Solved? {}".format(g.solved))
+
+    s = NaiveSolver(g)
+    if s.solve():
+        print(g)
+        print("Valid? {}".format(g.valid))
+        print("Solved? {}".format(g.solved))
+
+
+if __name__ == "__main__":
+    main()

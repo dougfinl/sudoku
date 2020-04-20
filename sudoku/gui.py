@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 
-from PyQt5.QtCore import pyqtSlot, Qt, QSize, QPropertyAnimation
+import threading
+from copy import deepcopy
+
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QSize, QTimer
 from PyQt5.QtWidgets import *
+
 from grid import Cell, Grid
 from solvers import SolverDelegate, NaiveSolver
-from copy import deepcopy
 
 
 class CellWidget(QLabel):
@@ -90,43 +93,175 @@ class GridWidget(QWidget):
     def grid(self, grid):
         self._grid = grid
         self.update_ui()
+        
+
+class PlaybackControlsWidget(QWidget):
+    step_selected = pyqtSignal(int)
+
+    def __init__(self):
+        super().__init__()
+
+        self._playback_timer = QTimer(self)
+        self._playback_timer.timeout.connect(self._step)
+
+        self._slider_steps = None
+        self._lbl_end_step = None
+        self._btn_play_pause = None
+        self.init_ui()
+
+    def init_ui(self):
+        main_layout = QVBoxLayout()
+        self.setLayout(main_layout)
+
+        #
+        # Top layout - scrubbing slider
+        #
+        scrubbing_layout = QHBoxLayout()
+        main_layout.addLayout(scrubbing_layout)
+
+        lbl_start_step = QLabel("Original")
+
+        self._slider_steps = QSlider(Qt.Horizontal)
+        self._slider_steps.valueChanged.connect(self.step_selected)
+        self._slider_steps.sliderMoved.connect(self.pause)  # If the user manually drags the slider, pause playback
+        self._slider_steps.setMinimum(0)
+        self._slider_steps.setSingleStep(1)
+
+        self._lbl_end_step = QLabel("?")
+
+        scrubbing_layout.addWidget(lbl_start_step)
+        scrubbing_layout.addWidget(self._slider_steps)
+        scrubbing_layout.addWidget(self._lbl_end_step)
+
+        #
+        # Bottom layout - playback control buttons
+        #
+        controls_layout = QHBoxLayout()
+        main_layout.addLayout(controls_layout)
+
+        btn_rewind = QPushButton("<<<")
+        btn_rewind.clicked.connect(self.rewind)
+
+        btn_step_back = QPushButton("<")
+        btn_step_back.clicked.connect(self.step_back)
+
+        self._btn_play_pause = QPushButton("Play")
+        self._btn_play_pause.clicked.connect(self.toggle_play_pause)
+
+        btn_step_next = QPushButton(">")
+        btn_step_next.clicked.connect(self.step)
+        btn_fast_forward = QPushButton(">>>")
+        btn_fast_forward.clicked.connect(self.fastforward)
+
+        controls_layout.addWidget(btn_rewind)
+        controls_layout.addWidget(btn_step_back)
+        controls_layout.addWidget(self._btn_play_pause)
+        controls_layout.addWidget(btn_step_next)
+        controls_layout.addWidget(btn_fast_forward)
+
+    def reset(self, num_steps: int):
+        self._slider_steps.setMaximum(num_steps)
+        self._slider_steps.setSliderPosition(num_steps)
+        self._lbl_end_step.setText("Step {}".format(num_steps))
+
+    @pyqtSlot()
+    def toggle_play_pause(self):
+        self.pause() if self._playback_timer.isActive() else self.play()
+
+    @property
+    def play_head_at_start(self) -> bool:
+        return self._slider_steps.sliderPosition() == self._slider_steps.minimum()
+
+    @property
+    def play_head_at_end(self) -> bool:
+        return self._slider_steps.sliderPosition() == self._slider_steps.maximum()
+
+    @pyqtSlot()
+    def play(self):
+        if self.play_head_at_end:
+            self.rewind()
+
+        self._playback_timer.start(100)
+        self._btn_play_pause.setText("Pause")
+
+    @pyqtSlot()
+    def pause(self):
+        self._playback_timer.stop()
+        self._btn_play_pause.setText("Play")
+
+    @pyqtSlot()
+    def rewind(self):
+        self.pause()
+        self._slider_steps.setSliderPosition(self._slider_steps.minimum())
+
+    @pyqtSlot()
+    def fastforward(self):
+        self.pause()
+        self._slider_steps.setSliderPosition(self._slider_steps.maximum())
+
+    @pyqtSlot()
+    def step(self):
+        self.pause()
+        self._step()
+
+    def _step(self):
+        new_pos = self._slider_steps.sliderPosition() + 1
+        self._slider_steps.setSliderPosition(new_pos)
+
+        if self.play_head_at_end:
+            self.pause()
+
+    @pyqtSlot()
+    def step_back(self):
+        self.pause()
+        new_pos = self._slider_steps.sliderPosition() - 1
+        self._slider_steps.setSliderPosition(new_pos)
 
 
 class SudokuSolverWindow(QMainWindow, SolverDelegate):
-    grid = Grid.empty_grid()
     original_grid = Grid.empty_grid()
 
     def __init__(self):
         super().__init__()
 
         self._solver = None
+        self._solver_thread = None
 
         self._grid_widget = None
-        self._combo_box_algorithm = None
-        self._spin_box_step_interval = None
-        self._btn_start_solver = None
-        self._btn_stop_solver = None
-        # self._btn_step_solver = None
-        self._btn_reset_solver = None
         self._btn_load_grid = None
+        self._combo_box_algorithm = None
+        self._btn_start_solver = None
+        self._playback_controls = None
         self.init_ui()
 
     def init_ui(self):
         self.setWindowTitle("Sudoku Solver")
         self.statusBar().showMessage("Load a grid to get started")
 
-        main_layout = QHBoxLayout()
+        main_layout = QVBoxLayout()
         w = QWidget()
         w.setLayout(main_layout)
         self.setCentralWidget(w)
 
+        top_layout = QHBoxLayout()
+        main_layout.addLayout(top_layout)
+
         # Left side - sudoku grid
         self._grid_widget = GridWidget()
-        main_layout.addWidget(self._grid_widget)
+        top_layout.addWidget(self._grid_widget)
 
         # Right side - options
         options_layout = QFormLayout()
-        main_layout.addLayout(options_layout)
+        top_layout.addLayout(options_layout)
+
+        self._btn_load_grid = QPushButton("Load Grid...")
+        self._btn_load_grid.clicked.connect(self.load_grid_dialog)
+        options_layout.addRow(self._btn_load_grid)
+
+        divider_top = QFrame()
+        divider_top.setFrameStyle(QFrame.HLine)
+        divider_top.setFrameShadow(QFrame.Sunken)
+        options_layout.addRow(divider_top)
 
         self._combo_box_algorithm = QComboBox()
         self._combo_box_algorithm.setEnabled(False)
@@ -134,60 +269,33 @@ class SudokuSolverWindow(QMainWindow, SolverDelegate):
         self._combo_box_algorithm.setCurrentIndex(0)
         options_layout.addRow("Algorithm", self._combo_box_algorithm)
 
-        self._spin_box_step_interval = QSpinBox()
-        self._spin_box_step_interval.setEnabled(False)
-        self._spin_box_step_interval.setMaximum(1000)
-        self._spin_box_step_interval.setValue(100)
-        self._spin_box_step_interval.valueChanged.connect(self.step_interval_changed)
-        options_layout.addRow("Step Interval (ms)", self._spin_box_step_interval)
-
-        self._btn_start_solver = QPushButton("Start")
+        self._btn_start_solver = QPushButton("Solve!")
         self._btn_start_solver.setEnabled(False)
         self._btn_start_solver.clicked.connect(self.start_solver)
         options_layout.addRow(self._btn_start_solver)
 
-        self._btn_stop_solver = QPushButton("Stop")
-        self._btn_stop_solver.setEnabled(False)
-        self._btn_stop_solver.clicked.connect(self.stop_solver)
-        options_layout.addRow(self._btn_stop_solver)
-
-        # self._btn_step_solver = QPushButton("Step")
-        # self._btn_step_solver.setEnabled(False)
-        # options_layout.addRow(self._btn_step_solver)
-
-        self._btn_reset_solver = QPushButton("Reset")
-        self._btn_reset_solver.setEnabled(False)
-        self._btn_reset_solver.clicked.connect(self.reset_solver)
-        options_layout.addRow(self._btn_reset_solver)
-
-        divider = QFrame()
-        divider.setFrameStyle(QFrame.HLine)
-        divider.setFrameShadow(QFrame.Sunken)
-        options_layout.addRow(divider)
-
-        self._btn_load_grid = QPushButton("Load Grid...")
-        self._btn_load_grid.clicked.connect(self.load_grid_dialog)
-        options_layout.addRow(self._btn_load_grid)
+        self._playback_controls = PlaybackControlsWidget()
+        self._playback_controls.setEnabled(False)
+        self._playback_controls.step_selected.connect(self.preview_solver_step)
+        main_layout.addWidget(self._playback_controls)
 
     def load_grid(self, grid: Grid):
         self.original_grid = deepcopy(grid)
-        self.grid = grid
-        self._grid_widget.grid = grid
+        self._grid_widget.grid = self.original_grid
         self._grid_widget.update_ui()
 
         self._combo_box_algorithm.setEnabled(True)
-        self._spin_box_step_interval.setEnabled(True)
         self._btn_start_solver.setEnabled(True)
-        # self._btn_step_solver.setEnabled(True)
-        self._btn_reset_solver.setEnabled(True)
-
         self.statusBar().showMessage("Grid loaded")
 
-    def on_solver_step(self):
-        self.statusBar().showMessage("Running step {}".format(self._solver.steps + 1))
+    def on_solver_solved(self):
+        self.statusBar().showMessage("Solved in {} seconds".format("..."))
+        self._grid_widget.grid = self._solver.grid
+        self._playback_controls.reset(self._solver.num_steps)
+        self._playback_controls.setEnabled(True)
 
-    def on_solver_step_complete(self):
-        self._grid_widget.update_ui()
+    def on_solver_failed(self):
+        pass
 
     @pyqtSlot()
     def load_grid_dialog(self):
@@ -196,46 +304,23 @@ class SudokuSolverWindow(QMainWindow, SolverDelegate):
             self.load_grid(Grid(grid_str))
 
     @pyqtSlot()
-    def step_interval_changed(self):
-        if self._solver is not None:
-            self._solver.step_interval = self._spin_box_step_interval.value()
-
-    @pyqtSlot()
     def start_solver(self):
+        self._btn_load_grid.setEnabled(False)
         self._combo_box_algorithm.setEnabled(False)
         self._btn_start_solver.setEnabled(False)
-        self._btn_load_grid.setEnabled(False)
-        self._btn_stop_solver.setEnabled(True)
-        self._solver = NaiveSolver(self.grid)
-        self._solver.delegate = self
-        self._solver.step_interval = self._spin_box_step_interval.value()
-        self._solver.start()
 
-    @pyqtSlot()
-    def stop_solver(self):
-        if self._solver is None:
-            return
+        self._solver = NaiveSolver(deepcopy(self.original_grid), delegate=self)
+        self._solver_thread = threading.Thread(target=self._solver.solve)
+        self._solver_thread.start()
 
-        self.statusBar().showMessage("Stopping...")
-        self._btn_stop_solver.setEnabled(False)
-        # Repaint the window immediately, before self._solver.stop() blocks
-        self.repaint()
-
-        self._solver.stop()
-
-        self.statusBar().showMessage("")
-        self._btn_start_solver.setEnabled(True)
-        self._combo_box_algorithm.setEnabled(True)
-        self._btn_load_grid.setEnabled(True)
-
-    @pyqtSlot()
-    def reset_solver(self):
-        self.stop_solver()
-        self.load_grid(self.original_grid)
-
-    def closeEvent(self, event):
-        self.stop_solver()
-        event.accept()
+    @pyqtSlot(int)
+    def preview_solver_step(self, step: int):
+        if step == 0:
+            self._grid_widget.grid = self.original_grid
+            self.statusBar().showMessage("Original puzzle")
+        else:
+            self._grid_widget.grid = self._solver.step_history[step - 1]
+            self.statusBar().showMessage("Showing step {}".format(step))
 
 
 def main():
