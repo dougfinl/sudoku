@@ -161,6 +161,20 @@ class Grid:
     def flattened(self):
         return [cell for row in self.cells for cell in row]
 
+    def empty_cell_coords(self) -> [(int, int)]:
+        """
+        Finds all empty cells in the grid.
+
+        :returns: a list of coordinate tuples (x, y) of the grid's empty cells
+        """
+        coords = []
+        for i in range(9):
+            for j in range(9):
+                if self.cells[i][j].empty:
+                    coords.append((j, i))
+
+        return coords
+
     @property
     def valid(self) -> bool:
         """

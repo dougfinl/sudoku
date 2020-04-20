@@ -73,14 +73,11 @@ class NaiveSolver(BaseSolver):
         success = False
 
         # Initialisation
-        empty_cell_coords = []
+        empty_cell_coords = self.grid.empty_cell_coords()
         all_possible_cell_values = []
-        for y in range(9):
-            for x in range(9):
-                if self.grid.cells[y][x].empty:
-                    empty_cell_coords.append((x, y))
-                    possible_values = self.grid.possible_values_for_cell(x, y)
-                    all_possible_cell_values.append(possible_values)
+        for (x, y) in empty_cell_coords:
+            possible_values = self.grid.possible_values_for_cell(x, y)
+            all_possible_cell_values.append(possible_values)
 
         # Solving
         for values_to_try in itertools.product(*all_possible_cell_values):
