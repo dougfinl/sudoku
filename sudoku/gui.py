@@ -218,6 +218,63 @@ class PlaybackControlsWidget(QWidget):
         self._slider_steps.setSliderPosition(new_pos)
 
 
+class LoadGridDialog(QDialog):
+    grid: Grid = Grid.empty_grid()
+
+    _line_edit_grid_string: QLineEdit = None
+    _button_box: QDialogButtonBox = None
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self._grid_preview = GridWidget()
+        self._grid_preview.grid = self.grid
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle("Load a Grid")
+
+        main_layout = QGridLayout()
+        self.setLayout(main_layout)
+
+        main_layout.addWidget(QLabel("Grid String"), 0, 0)
+        self._line_edit_grid_string = QLineEdit()
+        self._line_edit_grid_string.textChanged.connect(self.update_ui)
+        main_layout.addWidget(self._line_edit_grid_string, 1, 0, alignment=Qt.AlignTop)
+
+        main_layout.addWidget(QLabel("Preview"), 0, 1)
+        main_layout.addWidget(self._grid_preview, 1, 1)
+
+        self._button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self._button_box.accepted.connect(self.accept)
+        self._button_box.rejected.connect(self.reject)
+        main_layout.addWidget(self._button_box, 2, 0, 1, 2)
+
+        self.update_ui()
+
+    @property
+    def valid(self) -> bool:
+        valid = True
+
+        # Easiest way to validate the grid is to try creating a grid
+        try:
+            grid_str = self._line_edit_grid_string.text()
+            self.grid = Grid(grid_str)
+            self._grid_preview.grid = self.grid     # Update the grid preview
+        except ValueError:
+            valid &= False
+
+        valid &= self.grid.valid and not self.grid.solved
+
+        return valid
+
+    @pyqtSlot()
+    def update_ui(self) -> None:
+        valid = self.valid
+
+        self._button_box.button(QDialogButtonBox.Ok).setEnabled(valid)
+
+
 class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
     original_grid = Grid.empty_grid()
 
@@ -305,9 +362,9 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
 
     @pyqtSlot()
     def load_grid_dialog(self):
-        grid_str, ok = QInputDialog.getText(self, "Load Sudoku Grid", "81-char string:", QLineEdit.Normal, "")
-        if ok and len(grid_str) == 81:
-            self.load_grid(Grid(grid_str))
+        dialog = LoadGridDialog(self)
+        if dialog.exec():
+            self.load_grid(dialog.grid)
 
     @pyqtSlot()
     def start_solver(self):
