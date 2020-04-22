@@ -292,11 +292,16 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
     def on_solver_solved(self):
         self.statusBar().showMessage("Solved in {} seconds".format("..."))
         self._grid_widget.grid = self.solver.grid
+        self._btn_load_grid.setEnabled(True)
+        self._combo_box_algorithm.setEnabled(True)
+        self._btn_start_solver.setEnabled(True)
         self._playback_controls.reset(self.solver.num_steps)
         self._playback_controls.setEnabled(True)
 
     def on_solver_failed(self):
-        pass
+        self._btn_load_grid.setEnabled(True)
+        self._combo_box_algorithm.setEnabled(True)
+        self._btn_start_solver.setEnabled(True)
 
     @pyqtSlot()
     def load_grid_dialog(self):
