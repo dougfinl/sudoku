@@ -6,8 +6,8 @@ from copy import deepcopy
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QSize, QTimer
 from PyQt5.QtWidgets import *
 
+import solvers
 from grid import Cell, Grid
-from solvers import SolverDelegate, NaiveSolver
 
 
 class CellWidget(QLabel):
@@ -218,14 +218,14 @@ class PlaybackControlsWidget(QWidget):
         self._slider_steps.setSliderPosition(new_pos)
 
 
-class SudokuSolverWindow(QMainWindow, SolverDelegate):
+class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
     original_grid = Grid.empty_grid()
+
+    solver: solvers.Solver = None
+    _solver_thread: threading.Thread = None
 
     def __init__(self):
         super().__init__()
-
-        self._solver = None
-        self._solver_thread = None
 
         self._grid_widget = None
         self._btn_load_grid = None
@@ -265,7 +265,8 @@ class SudokuSolverWindow(QMainWindow, SolverDelegate):
 
         self._combo_box_algorithm = QComboBox()
         self._combo_box_algorithm.setEnabled(False)
-        self._combo_box_algorithm.addItems(["Naive"])
+        # Add all solver names to the list
+        self._combo_box_algorithm.addItems([k.capitalize() for k in solvers.ALL_SOLVERS.keys()])
         self._combo_box_algorithm.setCurrentIndex(0)
         options_layout.addRow("Algorithm", self._combo_box_algorithm)
 
@@ -290,8 +291,8 @@ class SudokuSolverWindow(QMainWindow, SolverDelegate):
 
     def on_solver_solved(self):
         self.statusBar().showMessage("Solved in {} seconds".format("..."))
-        self._grid_widget.grid = self._solver.grid
-        self._playback_controls.reset(self._solver.num_steps)
+        self._grid_widget.grid = self.solver.grid
+        self._playback_controls.reset(self.solver.num_steps)
         self._playback_controls.setEnabled(True)
 
     def on_solver_failed(self):
@@ -309,8 +310,11 @@ class SudokuSolverWindow(QMainWindow, SolverDelegate):
         self._combo_box_algorithm.setEnabled(False)
         self._btn_start_solver.setEnabled(False)
 
-        self._solver = NaiveSolver(deepcopy(self.original_grid), delegate=self)
-        self._solver_thread = threading.Thread(target=self._solver.solve)
+        solver_cls = solvers.ALL_SOLVERS[self._combo_box_algorithm.currentText().lower()]
+        assert solver_cls is not None
+        self.solver = solver_cls(deepcopy(self.original_grid), delegate=self)
+
+        self._solver_thread = threading.Thread(target=self.solver.solve)
         self._solver_thread.start()
 
     @pyqtSlot(int)
@@ -319,7 +323,7 @@ class SudokuSolverWindow(QMainWindow, SolverDelegate):
             self._grid_widget.grid = self.original_grid
             self.statusBar().showMessage("Original puzzle")
         else:
-            self._grid_widget.grid = self._solver.step_history[step - 1]
+            self._grid_widget.grid = self.solver.step_history[step - 1]
             self.statusBar().showMessage("Showing step {}".format(step))
 
 

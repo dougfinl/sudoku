@@ -29,7 +29,7 @@ class SolverDelegate:
         pass
 
 
-class BaseSolver(ABC):
+class Solver(ABC):
     grid: Grid = None
     step_history = []
 
@@ -68,7 +68,7 @@ class BaseSolver(ABC):
         pass
 
 
-class NaiveSolver(BaseSolver):
+class NaiveSolver(Solver):
     def solve(self):
         success = False
 
@@ -96,6 +96,37 @@ class NaiveSolver(BaseSolver):
             self._failed()
 
         return success
+
+
+class BacktracingSolver(Solver):
+    def solve(self):
+        # Find the next empty cell
+        empty_cell_coords = self.grid.empty_cell_coords()
+        if not empty_cell_coords:
+            self._failed()
+            return False
+
+        x, y = empty_cell_coords[0]
+        for possible_value in self.grid.possible_values_for_cell(x, y):
+            self.grid.cells[y][x].value = possible_value
+
+            self._step_complete()
+
+            if self.grid.solved:
+                self._solved()
+                return True
+            else:
+                if self.solve():
+                    return True
+
+        self.grid.cells[y][x].value = 0
+        return False
+
+
+ALL_SOLVERS = {
+    "naive": NaiveSolver,
+    "backtracing": BacktracingSolver
+}
 
 
 def main():
