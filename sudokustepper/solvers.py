@@ -4,7 +4,7 @@ import itertools
 from abc import ABC, abstractmethod
 from copy import deepcopy
 
-from grid import Grid
+from sudokustepper.grid import Grid
 
 
 class SolverDelegate:

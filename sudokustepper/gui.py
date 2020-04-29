@@ -6,8 +6,8 @@ from copy import deepcopy
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QSize, QTimer
 from PyQt5.QtWidgets import *
 
-import solvers
-from grid import Cell, Grid
+from sudokustepper import solvers
+from sudokustepper.grid import Cell, Grid
 
 
 class CellWidget(QLabel):
@@ -303,7 +303,7 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
         top_layout = QHBoxLayout()
         main_layout.addLayout(top_layout)
 
-        # Left side - sudoku grid
+        # Left side - sudokustepper grid
         self._grid_widget = GridWidget()
         top_layout.addWidget(self._grid_widget)
 
