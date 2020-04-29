@@ -2,7 +2,7 @@
 
 A tool for stepping through and visualising sudoku solving algorithms.
 
-![Animated Playback Demo](https://github.com/dougfinl/sudoku-stepper/raw/master/screenshots/backtracing-playback.gif)
+![Animated Playback Demo](https://github.com/dougfinl/sudokustepper/raw/master/screenshots/backtracing-playback.gif)
 
 
 ## License
