@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="sudokustepper",
-    version="0.1.0",
+    version="0.1.1",
     author="Douglas Finlay",
     author_email="douglas@douglasfinlay.com",
     description="A tool for stepping through, and visualising Sudoku solving algorithms",

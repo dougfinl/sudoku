@@ -219,16 +219,15 @@ class PlaybackControlsWidget(QWidget):
 
 
 class LoadGridDialog(QDialog):
-    grid: Grid = Grid.empty_grid()
-
-    _line_edit_grid_string: QLineEdit = None
-    _button_box: QDialogButtonBox = None
-
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self.grid: Grid = Grid.empty_grid()
         self._grid_preview = GridWidget()
         self._grid_preview.grid = self.grid
+
+        self._line_edit_grid_string: QLineEdit = None
+        self._button_box: QDialogButtonBox = None
         self.init_ui()
 
     def init_ui(self):
@@ -276,13 +275,12 @@ class LoadGridDialog(QDialog):
 
 
 class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
-    original_grid = Grid.empty_grid()
-
-    solver: solvers.Solver = None
-    _solver_thread: threading.Thread = None
-
     def __init__(self):
         super().__init__()
+
+        self.original_grid = Grid.empty_grid()
+        self.solver: solvers.Solver = None
+        self._solver_thread: threading.Thread = None
 
         self._grid_widget = None
         self._btn_load_grid = None

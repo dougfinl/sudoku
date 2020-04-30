@@ -30,14 +30,10 @@ class SolverDelegate:
 
 
 class Solver(ABC):
-    grid: Grid = None
-    step_history = []
-
-    delegate: SolverDelegate = None
-
     def __init__(self, grid: Grid, delegate=None):
-        self.grid = grid
-        self.delegate = delegate
+        self.grid: Grid = grid
+        self.step_history = []
+        self.delegate: SolverDelegate = delegate
 
     def _step_complete(self):
         self.step_history.append(deepcopy(self.grid))
