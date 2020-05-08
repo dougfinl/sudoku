@@ -2,8 +2,10 @@
 
 import threading
 from copy import deepcopy
+from typing import List
 
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, Qt, QSize, QTimer
+from PyQt5.QtCore import pyqtSignal, pyqtProperty, pyqtSlot, Qt, QSize, QTimer, QFile, QTextStream
+from PyQt5.QtGui import QPaintEvent
 from PyQt5.QtWidgets import *
 
 from sudokustepper import solvers
@@ -11,58 +13,56 @@ from sudokustepper.grid import Cell, Grid
 
 
 class CellWidget(QLabel):
-    locked_cell_style = """
-        QLabel {
-            color: #000000;
-            background-color: #e0e0e0;
-            font-size: 14pt;
-            border: 1px solid #a0a0a0;
-        }
-    """
-
-    unlocked_cell_style = """
-        QLabel {
-            color: blue;
-            background-color: #f8f8f8;
-            font-size: 14pt;
-            border: 1px solid #a0a0a0;
-        }
-    """
-
     def __init__(self):
         super().__init__()
 
+        self._cell: Cell = Cell()
+        self._locked: bool = False
+        self._valid: bool = True
+
         self.setAlignment(Qt.AlignCenter)
-        self.setStyleSheet(self.locked_cell_style)
-
-        self._cell = Cell()
-        self.update_ui()
-
-    def update_ui(self):
-        self.setText("" if self.cell.empty else str(self.cell.value))
-        self.setStyleSheet(self.locked_cell_style if self.cell.locked else self.unlocked_cell_style)
 
     def minimumSizeHint(self):
         return QSize(50, 50)
 
     @property
-    def cell(self):
+    def cell(self) -> Cell:
         return self._cell
 
     @cell.setter
-    def cell(self, cell):
+    def cell(self, cell) -> None:
         self._cell = cell
-        self.update_ui()
+        self.update()
+
+    def paintEvent(self, e: QPaintEvent) -> None:
+        self._locked = self._cell.locked
+        self._valid = self._cell.valid
+
+        t = "" if self.cell.empty else str(self.cell.value)
+        self.setText(t)
+
+        # Qt trick to reload the QSS style for this widget
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+        super().paintEvent(e)
+
+    @pyqtProperty(bool)
+    def valid(self) -> bool:
+        return self._valid
+
+    @pyqtProperty(bool)
+    def locked(self) -> bool:
+        return self._locked
 
 
 class GridWidget(QWidget):
     def __init__(self):
         super().__init__()
 
-        self._grid = Grid.empty_grid()
+        self._grid = Grid()
         self._cell_widgets = None
         self.init_ui()
-        self.update_ui()
 
     def init_ui(self):
         grid_layout = QGridLayout()
@@ -70,20 +70,15 @@ class GridWidget(QWidget):
         self.setLayout(grid_layout)
 
         # 9x9 grid of buttons
-        self._cell_widgets = []
+        self._cell_widgets: List[List[CellWidget]] = []
         for i in range(9):
             row = []
             for j in range(9):
                 b = CellWidget()
+                b.cell = self._grid.cells[i][j]
                 row.append(b)
-
                 grid_layout.addWidget(b, i, j)
             self._cell_widgets.append(row)
-
-    def update_ui(self):
-        for i in range(9):
-            for j in range(9):
-                self._cell_widgets[i][j].cell = self.grid.cells[i][j]
 
     @property
     def grid(self):
@@ -92,7 +87,10 @@ class GridWidget(QWidget):
     @grid.setter
     def grid(self, grid):
         self._grid = grid
-        self.update_ui()
+        for i in range(9):
+            for j in range(9):
+                self._cell_widgets[i][j].cell = self._grid.cells[i][j]
+        self.update()
         
 
 class PlaybackControlsWidget(QWidget):
@@ -222,7 +220,7 @@ class LoadGridDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.grid: Grid = Grid.empty_grid()
+        self.grid: Grid = Grid()
         self._grid_preview = GridWidget()
         self._grid_preview.grid = self.grid
 
@@ -253,32 +251,26 @@ class LoadGridDialog(QDialog):
 
     @property
     def valid(self) -> bool:
-        valid = True
-
-        # Easiest way to validate the grid is to try creating a grid
-        try:
-            grid_str = self._line_edit_grid_string.text()
-            self.grid = Grid(grid_str)
-            self._grid_preview.grid = self.grid     # Update the grid preview
-        except ValueError:
-            valid &= False
-
-        valid &= self.grid.valid and not self.grid.solved
-
-        return valid
+        return self.grid.valid and not self.grid.solved
 
     @pyqtSlot()
     def update_ui(self) -> None:
-        valid = self.valid
+        try:
+            grid_str = self._line_edit_grid_string.text()
+            self.grid.grid_string = grid_str
 
-        self._button_box.button(QDialogButtonBox.Ok).setEnabled(valid)
+            self._grid_preview.update()
+            self._button_box.button(QDialogButtonBox.Ok).setEnabled(self.valid)
+        except ValueError:
+            # TODO: notify the user of the error
+            return
 
 
 class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
     def __init__(self):
         super().__init__()
 
-        self.original_grid = Grid.empty_grid()
+        self.original_grid = Grid()
         self.solver: solvers.Solver = None
         self._solver_thread: threading.Thread = None
 
@@ -338,7 +330,7 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
     def load_grid(self, grid: Grid):
         self.original_grid = deepcopy(grid)
         self._grid_widget.grid = self.original_grid
-        self._grid_widget.update_ui()
+        self._grid_widget.update()
 
         self._combo_box_algorithm.setEnabled(True)
         self._btn_start_solver.setEnabled(True)
@@ -389,10 +381,19 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
 
 def main():
     import sys
+    import resources
 
     app = QApplication(sys.argv)
+
+    # Load app stylesheet from the resource file
+    style_sheet_file = QFile(":/styles/app.qss")
+    style_sheet_file.open(QFile.ReadOnly | QFile.Text)
+    style_sheet = QTextStream(style_sheet_file).readAll()
+    app.setStyleSheet(style_sheet)
+
     w = SudokuSolverWindow()
     w.show()
+
     sys.exit(app.exec_())
 
 

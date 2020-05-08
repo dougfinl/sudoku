@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from typing import List
+
 
 class Cell:
     def __init__(self, value=0, locked=False):
@@ -13,6 +15,9 @@ class Cell:
             raise ValueError("cell value must be between 0 and 9 inclusive")
 
         self._value = value
+        self.valid: bool = True
+
+        # Only lock the cell if the value is non-zero
         if value == 0:
             self._locked = False
         else:
@@ -36,7 +41,8 @@ class Cell:
         return self._locked
 
     def lock(self):
-        self._locked = True
+        if not self.empty:
+            self._locked = True
 
     def unlock(self):
         self._locked = False
@@ -57,25 +63,44 @@ class Cell:
 
 
 class Grid:
-    def __init__(self, cell_values):
-        if len(cell_values) != 81:
+    def __init__(self, grid_string: str = None):
+        cells: List[List[Cell]] = []
+        for i in range(9):
+            row = []
+            for j in range(9):
+                row.append(Cell(0))
+            cells.append(row)
+
+        self.cells = cells
+        self._valid = True
+
+        if grid_string is not None:
+            self.grid_string = grid_string
+
+    @property
+    def grid_string(self) -> str:
+        result = []
+        for cell in self.flattened():
+            result.append(str(cell.value))
+
+        return "".join(result)
+
+    @grid_string.setter
+    def grid_string(self, string: str):
+        if len(string) != 81:
             raise ValueError("length of values must be 81")
 
-        cells = [Cell(int(c), locked=True) for c in cell_values]
+        for i, cell in enumerate(self.flattened()):
+            cell.unlock()
+            cell.value = int(string[i])
+            cell.lock()
 
-        # Convert to a 2-dimensional list
-        self.cells = [cells[i: i + 9] for i in range(0, 81, 9)]
-
-    @classmethod
-    def empty_grid(cls):
-        return cls("0" * 81)
+        self.validate()
 
     def row(self, i) -> []:
         """
         Returns cells in the row at index i.
-
         :param i: the row index, counting from top to bottom
-
         :returns: a list of 9 cells
         """
         if i not in range(9):
@@ -178,35 +203,49 @@ class Grid:
     @property
     def valid(self) -> bool:
         """
-        Validates cell values in the board. Empty cells are ignored, thus the
-        board is valid if empty.
+        :returns: True if the board is valid, otherwise False
+        """
+        self.validate()
+        return self._valid
+
+    def validate(self):
+        """
+        Validates cell values in the board, and sets the valid property to True if valid, otherwise False. Empty cells
+        are ignored, thus the board is valid if empty.
 
         The board is valid if all of the following conditions are true:
             * each column contains the numbers 1-9 or blank cells, with no
               repeated values
             * each row follows the same rule
             * each 3x3 box follows the same rule
-
-        :returns: True if the board is valid, otherwise False
         """
-        cell_groups = self.rows() + self.cols() + self.boxes()
+        # Reset valid flag of all cells
+        for cell in self.flattened():
+            cell.valid = True
 
-        # Drop empty cells
+        # Get all cell groups, and remove the empty cells (we don't care about these)
+        cell_groups = self.rows() + self.cols() + self.boxes()
         cell_groups = [
             [c for c in cells if not c.empty] for cells in cell_groups
         ]
-        # Convert each cell group to a set (removes duplicates)
-        cell_sets = [set(x) for x in cell_groups]
 
-        result = True
-        for cell_group, cell_set in zip(cell_groups, cell_sets):
-            # If there were any duplicate cells in a cell group, then the set
-            # representation of that group will contain fewer values
-            if len(cell_group) != len(cell_set):
-                result = False
-                break
+        valid = True
+        for cell_group in cell_groups:
+            # Flag the duplicate cells in this cell group
+            # TODO: make this algorithm more efficient
+            seen_cells = set()
+            for cell in cell_group:
+                if cell in seen_cells:
+                    valid &= False
+                    cell.valid = False
+                    # Also set the 'seen' cell as invalid
+                    for c in seen_cells:
+                        if c == cell:
+                            c.valid = False
+                            break
+                seen_cells.add(cell)
 
-        return result
+        self._valid = valid
 
     @property
     def solved(self) -> bool:

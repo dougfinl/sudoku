@@ -1,0 +1,17 @@
+/* Base cell style */
+CellWidget {
+    font-size: 14pt;
+    color: blue;
+    background-color: #f8f8f8;
+    border: 1px solid #a0a0a0;
+}
+
+CellWidget[locked="true"] {
+    color: #000000;
+    background-color: #e0e0e0;
+}
+
+CellWidget[valid="false"] {
+    background-color: #ff6961;
+    border-color: red;
+}
