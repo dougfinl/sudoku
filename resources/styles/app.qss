@@ -15,3 +15,12 @@ CellWidget[valid="false"] {
     background-color: #ff6961;
     border-color: red;
 }
+
+CellWidget[selected="true"] {
+    color: #000000;
+    background-color: yellow;
+}
+
+CellWidget[editable="true"][selected="false"]:hover {
+    background-color: lightyellow;
+}

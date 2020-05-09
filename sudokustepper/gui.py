@@ -2,10 +2,10 @@
 
 import threading
 from copy import deepcopy
-from typing import List
+from typing import List, Optional
 
-from PyQt5.QtCore import pyqtSignal, pyqtProperty, pyqtSlot, Qt, QSize, QTimer, QFile, QTextStream
-from PyQt5.QtGui import QPaintEvent
+from PyQt5.QtCore import pyqtSignal, pyqtProperty, pyqtSlot, Qt, QSize, QTimer, QFile, QTextStream, QObject, QEvent
+from PyQt5.QtGui import QKeyEvent, QKeySequence, QMouseEvent, QPaintEvent
 from PyQt5.QtWidgets import *
 
 from sudokustepper import solvers
@@ -13,12 +13,19 @@ from sudokustepper.grid import Cell, Grid
 
 
 class CellWidget(QLabel):
+    on_edited = pyqtSignal()
+    on_selected = pyqtSignal()
+
     def __init__(self):
         super().__init__()
 
         self._cell: Cell = Cell()
         self._locked: bool = False
         self._valid: bool = True
+        self._selected: bool = False
+        self._editable: bool = False
+        self.x_coord: int = -1
+        self.y_coord: int = -1
 
         self.setAlignment(Qt.AlignCenter)
 
@@ -55,13 +62,46 @@ class CellWidget(QLabel):
     def locked(self) -> bool:
         return self._locked
 
+    @pyqtProperty(bool)
+    def selected(self) -> bool:
+        return self._selected
+
+    def select(self) -> None:
+        if self._editable:
+            self._cell.unlock()
+            self._selected = True
+            self.on_selected.emit()
+            self.update()
+
+    def deselect(self) -> None:
+        self._selected = False
+        self._cell.lock()
+        self.update()
+
+    def mousePressEvent(self, e: QMouseEvent):
+        self.select()
+
+    @pyqtProperty(bool)
+    def editable(self) -> bool:
+        return self._editable
+
+    @editable.setter
+    def editable(self, editable: bool) -> None:
+        self._editable = editable
+        if not editable:
+            self.deselect()
+
 
 class GridWidget(QWidget):
+    on_edited = pyqtSignal()
+
     def __init__(self):
         super().__init__()
 
+        self._selected_cell: Optional[CellWidget] = None
         self._grid = Grid()
-        self._cell_widgets = None
+        self._cell_widgets: List[List[CellWidget]] = []
+        self._editable: bool = False
         self.init_ui()
 
     def init_ui(self):
@@ -70,12 +110,15 @@ class GridWidget(QWidget):
         self.setLayout(grid_layout)
 
         # 9x9 grid of buttons
-        self._cell_widgets: List[List[CellWidget]] = []
         for i in range(9):
             row = []
             for j in range(9):
                 b = CellWidget()
+                b.x_coord = j
+                b.y_coord = i
                 b.cell = self._grid.cells[i][j]
+                b.on_selected.connect(self.cell_selected)
+                b.on_edited.connect(self.on_edited)
                 row.append(b)
                 grid_layout.addWidget(b, i, j)
             self._cell_widgets.append(row)
@@ -91,7 +134,105 @@ class GridWidget(QWidget):
             for j in range(9):
                 self._cell_widgets[i][j].cell = self._grid.cells[i][j]
         self.update()
-        
+
+    @pyqtProperty(bool)
+    def editable(self) -> bool:
+        return self._editable
+
+    @editable.setter
+    def editable(self, editable: bool) -> None:
+        if editable:
+            self.setFocusPolicy(Qt.StrongFocus)
+
+        self._editable = editable
+        for row in self._cell_widgets:
+            for cell_widget in row:
+                cell_widget.editable = editable
+        self.update()
+
+    @pyqtSlot()
+    def cell_selected(self) -> None:
+        self.deselect_current_cell()
+        self._selected_cell = self.sender()
+
+    def deselect_current_cell(self) -> None:
+        if self._selected_cell is not None:
+            self._selected_cell.deselect()
+        self._selected_cell = None
+
+    def select_cell_at(self, x: int, y: int) -> None:
+        self.deselect_current_cell()
+
+        # Wrap the coordinates to the grid size
+        x %= 9
+        y %= 9
+        self._cell_widgets[y][x].select()
+
+    def select_next_cell(self) -> None:
+        selected_cell = self._selected_cell
+        if selected_cell is None:
+            return
+        if selected_cell.x_coord == 8 and selected_cell.y_coord == 8:
+            self.deselect_current_cell()
+            return
+
+        x = selected_cell.x_coord
+        y = selected_cell.y_coord
+        x += 1
+        y += max(x // 9, 0)
+        x %= 9
+        self.select_cell_at(x, y)
+
+    def select_prev_cell(self) -> None:
+        selected_cell = self._selected_cell
+        if selected_cell is None:
+            return
+        if selected_cell.x_coord == 0 and selected_cell.y_coord == 0:
+            self.deselect_current_cell()
+            return
+
+        x = selected_cell.x_coord
+        y = selected_cell.y_coord
+        x -= 1
+        y += max(x // 9, -1)
+        x %= 9
+        self.select_cell_at(x, y)
+
+    def eventFilter(self, o: QObject, e: QEvent) -> bool:
+        if e.type() == QEvent.KeyPress:
+            k = e.key()
+            if self._editable and (Qt.Key_0 <= k <= Qt.Key_9 or Qt.Key_Up <= k <= Qt.Key_Down or k == Qt.Key_Backspace):
+                return True
+            else:
+                super().eventFilter(o, e)
+        else:
+            super().eventFilter(o, e)
+
+    def keyPressEvent(self, e: QKeyEvent):
+        if not self._editable or self._selected_cell is None:
+            super().keyPressEvent(e)
+            return
+
+        k = e.key()
+        if k == Qt.Key_Left:
+            self.select_cell_at(self._selected_cell.x_coord - 1, self._selected_cell.y_coord)
+        elif k == Qt.Key_Right:
+            self.select_cell_at(self._selected_cell.x_coord + 1, self._selected_cell.y_coord)
+        elif k == Qt.Key_Up:
+            self.select_cell_at(self._selected_cell.x_coord, self._selected_cell.y_coord - 1)
+        elif k == Qt.Key_Down:
+            self.select_cell_at(self._selected_cell.x_coord, self._selected_cell.y_coord + 1)
+        elif Qt.Key_0 <= k <= Qt.Key_9:
+            self._selected_cell.cell.value = int(QKeySequence(k).toString())
+            self.select_next_cell()
+            self.on_edited.emit()
+        elif k == Qt.Key_Backspace:
+            self._selected_cell.cell.value = 0
+            self.select_prev_cell()
+            self.on_edited.emit()
+        else:
+            super().keyPressEvent(e)
+
 
 class PlaybackControlsWidget(QWidget):
     step_selected = pyqtSignal(int)
@@ -223,8 +364,9 @@ class LoadGridDialog(QDialog):
         self.grid: Grid = Grid()
         self._grid_preview = GridWidget()
         self._grid_preview.grid = self.grid
+        self._grid_preview.editable = True
+        self._grid_preview.on_edited.connect(self.grid_widget_edited)
 
-        self._line_edit_grid_string: QLineEdit = None
         self._button_box: QDialogButtonBox = None
         self.init_ui()
 
@@ -234,18 +376,16 @@ class LoadGridDialog(QDialog):
         main_layout = QGridLayout()
         self.setLayout(main_layout)
 
-        main_layout.addWidget(QLabel("Grid String"), 0, 0)
-        self._line_edit_grid_string = QLineEdit()
-        self._line_edit_grid_string.textChanged.connect(self.update_ui)
-        main_layout.addWidget(self._line_edit_grid_string, 1, 0, alignment=Qt.AlignTop)
-
-        main_layout.addWidget(QLabel("Preview"), 0, 1)
-        main_layout.addWidget(self._grid_preview, 1, 1)
+        main_layout.addWidget(QLabel("Preview"), 0, 0)
+        main_layout.addWidget(self._grid_preview, 1, 0)
 
         self._button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self._button_box.accepted.connect(self.accept)
         self._button_box.rejected.connect(self.reject)
         main_layout.addWidget(self._button_box, 2, 0, 1, 2)
+
+        self._grid_preview.select_cell_at(0, 0)
+        self._grid_preview.setFocus(Qt.OtherFocusReason)
 
         self.update_ui()
 
@@ -254,16 +394,42 @@ class LoadGridDialog(QDialog):
         return self.grid.valid and not self.grid.solved
 
     @pyqtSlot()
-    def update_ui(self) -> None:
-        try:
-            grid_str = self._line_edit_grid_string.text()
-            self.grid.grid_string = grid_str
+    def grid_widget_edited(self) -> None:
+        self.update_ui()
 
-            self._grid_preview.update()
-            self._button_box.button(QDialogButtonBox.Ok).setEnabled(self.valid)
-        except ValueError:
-            # TODO: notify the user of the error
-            return
+    def update_ui(self):
+        self._grid_preview.update()
+        self._button_box.button(QDialogButtonBox.Ok).setEnabled(self.valid)
+
+    def mousePressEvent(self, e: QMouseEvent):
+        self._grid_preview.deselect_current_cell()
+        super().mousePressEvent(e)
+
+    def load_grid_from_clipboard(self):
+        clipboard = QApplication.clipboard()
+        if clipboard.mimeData().hasText():
+            try:
+                grid_str = clipboard.text()
+                self.grid.grid_string = grid_str
+                self.update_ui()
+            except ValueError:
+                # TODO: notify the user of the error
+                return
+
+    def eventFilter(self, o: QObject, e: QEvent) -> bool:
+        if e.type() == e.KeyPress:
+            if QKeyEvent(e).matches(QKeySequence.Paste):
+                return True
+            else:
+                super().eventFilter(o, e)
+        else:
+            super().eventFilter(o, e)
+
+    def keyPressEvent(self, e: QKeyEvent):
+        if e.matches(QKeySequence.Paste):
+            self.load_grid_from_clipboard()
+        else:
+            super().keyPressEvent(e)
 
 
 class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
@@ -381,7 +547,7 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
 
 def main():
     import sys
-    from sudokustepper import resources
+    import resources
 
     app = QApplication(sys.argv)
 
