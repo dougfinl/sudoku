@@ -1,14 +1,20 @@
 /* Base cell style */
 CellWidget {
     font-size: 14pt;
-    color: blue;
+    color: #000000;
+    font-weight: bold;
     background-color: #f8f8f8;
     border: 1px solid #a0a0a0;
 }
 
-CellWidget[locked="true"] {
-    color: #000000;
+CellWidget.alternate {
     background-color: #e0e0e0;
+}
+
+CellWidget[locked="true"] {
+    color: #3f3f3f;
+    font-weight: normal;
+    /* font-weight: bold; */
 }
 
 CellWidget[valid="false"] {

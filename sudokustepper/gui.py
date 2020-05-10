@@ -113,14 +113,16 @@ class GridWidget(QWidget):
         for i in range(9):
             row = []
             for j in range(9):
-                b = CellWidget()
-                b.x_coord = j
-                b.y_coord = i
-                b.cell = self._grid.cells[i][j]
-                b.on_selected.connect(self.cell_selected)
-                b.on_edited.connect(self.on_edited)
-                row.append(b)
-                grid_layout.addWidget(b, i, j)
+                w = CellWidget()
+                w.x_coord = j
+                w.y_coord = i
+                w.cell = self._grid.cells[i][j]
+                w.on_selected.connect(self.cell_selected)
+                w.on_edited.connect(self.on_edited)
+                if (i // 3 + j // 3) % 2 != 0:
+                    w.setProperty("class", "alternate")
+                row.append(w)
+                grid_layout.addWidget(w, i, j)
             self._cell_widgets.append(row)
 
     @property
