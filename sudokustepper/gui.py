@@ -5,7 +5,7 @@ from copy import deepcopy
 from typing import List, Optional
 
 from PyQt5.QtCore import pyqtSignal, pyqtProperty, pyqtSlot, Qt, QSize, QTimer, QFile, QTextStream, QObject, QEvent
-from PyQt5.QtGui import QKeyEvent, QKeySequence, QMouseEvent, QPaintEvent
+from PyQt5.QtGui import QKeyEvent, QKeySequence, QMouseEvent, QPaintEvent, QShowEvent
 from PyQt5.QtWidgets import *
 
 from sudokustepper import solvers
@@ -406,6 +406,10 @@ class LoadGridDialog(QDialog):
     def mousePressEvent(self, e: QMouseEvent):
         self._grid_preview.deselect_current_cell()
         super().mousePressEvent(e)
+
+    def showEvent(self, e: QShowEvent) -> None:
+        # Attempt to create a grid from the clipboard upon showing the dialog
+        self.load_grid_from_clipboard()
 
     def load_grid_from_clipboard(self):
         clipboard = QApplication.clipboard()
