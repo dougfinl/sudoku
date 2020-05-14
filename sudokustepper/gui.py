@@ -203,7 +203,8 @@ class GridWidget(QWidget):
     def eventFilter(self, o: QObject, e: QEvent) -> bool:
         if e.type() == QEvent.KeyPress:
             k = e.key()
-            if self._editable and (Qt.Key_0 <= k <= Qt.Key_9 or Qt.Key_Up <= k <= Qt.Key_Down or k == Qt.Key_Backspace):
+            if self._editable and (Qt.Key_0 <= k <= Qt.Key_9 or Qt.Key_Up <= k <= Qt.Key_Down or
+                                   k == Qt.Key_Backspace or k == Qt.Key_Delete):
                 return True
             else:
                 super().eventFilter(o, e)
@@ -229,8 +230,11 @@ class GridWidget(QWidget):
             self.select_next_cell()
             self.on_edited.emit()
         elif k == Qt.Key_Backspace:
-            self._selected_cell.cell.value = 0
             self.select_prev_cell()
+            self._selected_cell.cell.value = 0
+            self.on_edited.emit()
+        elif k == Qt.Key_Delete:
+            self._selected_cell.cell.value = 0
             self.on_edited.emit()
         else:
             super().keyPressEvent(e)
@@ -359,7 +363,7 @@ class PlaybackControlsWidget(QWidget):
         self._slider_steps.setSliderPosition(new_pos)
 
 
-class LoadGridDialog(QDialog):
+class EditGridDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -373,12 +377,12 @@ class LoadGridDialog(QDialog):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("Load a Grid")
+        self.setWindowTitle("Grid Editor")
 
         main_layout = QGridLayout()
         self.setLayout(main_layout)
 
-        main_layout.addWidget(QLabel("Preview"), 0, 0)
+        main_layout.addWidget(QLabel("Edit below, or paste an 81-char grid string (0070090301...)"), 0, 0)
         main_layout.addWidget(self._grid_preview, 1, 0)
 
         self._button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -408,8 +412,9 @@ class LoadGridDialog(QDialog):
         super().mousePressEvent(e)
 
     def showEvent(self, e: QShowEvent) -> None:
-        # Attempt to create a grid from the clipboard upon showing the dialog
-        self.load_grid_from_clipboard()
+        # If the grid is empty, attempt to create a grid from the clipboard upon showing the dialog
+        if self.grid.empty:
+            self.load_grid_from_clipboard()
 
     def load_grid_from_clipboard(self):
         clipboard = QApplication.clipboard()
@@ -455,7 +460,7 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
 
     def init_ui(self):
         self.setWindowTitle("Sudoku Solver")
-        self.statusBar().showMessage("Load a grid to get started")
+        self.statusBar().showMessage("Edit a grid to get started")
 
         main_layout = QVBoxLayout()
         w = QWidget()
@@ -473,7 +478,7 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
         options_layout = QFormLayout()
         top_layout.addLayout(options_layout)
 
-        self._btn_load_grid = QPushButton("Load Grid...")
+        self._btn_load_grid = QPushButton("Grid Editor")
         self._btn_load_grid.clicked.connect(self.load_grid_dialog)
         options_layout.addRow(self._btn_load_grid)
 
@@ -524,7 +529,8 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
 
     @pyqtSlot()
     def load_grid_dialog(self):
-        dialog = LoadGridDialog(self)
+        dialog = EditGridDialog(self)
+        dialog.grid.grid_string = self.original_grid.grid_string
         if dialog.exec():
             self.load_grid(dialog.grid)
 
