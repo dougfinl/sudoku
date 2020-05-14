@@ -277,6 +277,13 @@ class Grid:
         values = set(range(1, 10)) - row_values - col_values - box_values
         return values
 
+    @property
+    def empty(self) -> bool:
+        result = True
+        for cell in self.flattened():
+            result &= cell.empty
+        return result
+
     def __eq__(self, o):
         if isinstance(o, Grid):
             return self.cells == o.cells
