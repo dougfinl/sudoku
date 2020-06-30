@@ -559,7 +559,7 @@ class SudokuSolverWindow(QMainWindow, solvers.SolverDelegate):
 
 def main():
     import sys
-    import resources
+    from sudokustepper import resources
 
     app = QApplication(sys.argv)
 
